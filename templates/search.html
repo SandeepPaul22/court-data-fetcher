@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block title %}Search Cases - Court Data Fetcher{% endblock %}
+
+{% block head %}
+<style>
+.captcha-container {
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+    margin: 1rem 0;
+}
+
+.captcha-image {
+    max-width: 200px;
+    border: 2px solid #dee2e6;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.captcha-input {
+    width: 150px;
+    text-align: center;
+    font-size: 1.2rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.disclaimer {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="card-title mb-0">
+                        <i class="bi bi-search me-2"></i>Search Court Cases
+                    </h3>
+                    <p class="mb-0 opacity-75">Enter case details to retrieve information from Delhi High Court</p>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Disclaimer -->
+                    <div class="disclaimer">
+                        <div class="d-flex align-items-start">
+                            <i class="bi bi-info-circle-fill text-warning me-2 mt-1"></i>
+                            <div>
+                                <strong>Legal Notice:</strong> This tool fetches publicly available case information from the Delhi High Court website. 
+                                Data accuracy depends on the source website. Use responsibly and verify important information independently.
+                            </div>
+                        </div>
+                    </div>
+
+                    <form method="POST" class="needs-validation" novalidate id="searchForm">
+                        {{ form.hidden_tag() }}
+                        
+                        <!-- Hidden fields for CAPTCHA flow -->
+                        {% if captcha_data %}
+                            <input type="hidden" name="captcha_required" value="true">
+                            <input type="hidden" name="prev_case_type" value="{{ captcha_data.case_type }}">
+                            <input type="hidden" name="prev_case_number" value="{{ captcha_data.case_number }}">
+                            <input type="hidden" name="prev_filing_year" value="{{ captcha_data.filing_year }}">
+                        {% endif %}
+                        
+                        <div class="row g-3">
+                            <div class="col-md-12">
+                                <label for="{{ form.case_type.id }}" class="form-label">{{ form.case_type.label.text }}</label>
+                                {{ form.case_type(class="form-select", value=captcha_data.case_type if captcha_data else '') }}
+                                {% if form.case_type.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.case_type.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-md-8">
+                                <label for="{{ form.case_number.id }}" class="form-label">{{ form.case_number.label.text }}</label>
+                                {{ form.case_number(class="form-control", value=captcha_data.case_number if captcha_data else '') }}
+                                {% if form.case_number.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.case_number.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                                <div class="form-text">
+                                    <i class="bi bi-info-circle me-1"></i>Examples: 123, 456, 78 (numbers only)
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="{{ form.filing_year.id }}" class="form-label">{{ form.filing_year.label.text }}</label>
+                                {{ form.filing_year(class="form-control", value=captcha_data.filing_year if captcha_data else '') }}
+                                {% if form.filing_year.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.filing_year.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- CAPTCHA Section -->
+                        {% if captcha_image %}
+                        <div class="captcha-container">
+                            <h6 class="text-primary">
+                                <i class="bi bi-shield-check me-2"></i>Security Verification Required
+                            </h6>
+                            <img src="{{ captcha_image }}" alt="CAPTCHA" class="captcha-image" id="captchaImage">
+                            <br>
+                            <div class="mb-3">
+                                <label for="captcha_text" class="form-label">Enter the characters shown above:</label>
+                                <input type="text" class="form-control captcha-input mx-auto" 
+                                       name="captcha_text" id="captcha_text" 
+                                       placeholder="ABCD" maxlength="6" required>
+                                <div class="form-text">Enter exactly as shown (case sensitive)</div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <div class="text-center mt-4">
+                            {% if captcha_image %}
+                                <button type="submit" class="btn btn-success btn-lg">
+                                    <i class="bi bi-shield-check me-2"></i>Verify & Search
+                                </button>
+                            {% else %}
+                                {{ form.submit(class="btn btn-primary btn-lg", id="searchBtn") }}
+                            {% endif %}
+                        </div>
+
+                        <!-- Progress indicator -->
+                        <div class="progress mt-3" style="display: none;" id="progressBar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" style="width: 0%"></div>
+                        </div>
+                        
+                        <div class="text-center mt-3">
+                            <small class="text-muted">
+                                <i class="bi bi-clock me-1"></i>Search typically takes 10-30 seconds
+                            </small>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Information Cards -->
+    <div class="row mt-5">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5><i class="bi bi-info-circle-fill text-primary me-2"></i>Supported Case Types</h5>
+                    <div class="row">
+                        <div class="col-6">
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check2 text-success me-1"></i>CWP - Civil Writ</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>CRL - Criminal Writ</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>FAO - First Appeal</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>MAC - Motor Accident</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>CS - Civil Suit</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>CM - Civil Misc</li>
+                            </ul>
+                        </div>
+                        <div class="col-6">
+                            <ul class="list-unstyled">
+                                <li><i class="bi bi-check2 text-success me-1"></i>CRM - Criminal Misc</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>SA - Second Appeal</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>RFA - Regular Appeal</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>CRL.A - Criminal Appeal</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>BAIL - Bail Application</li>
+                                <li><i class="bi bi-check2 text-success me-1"></i>ARB - Arbitration</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5><i class="bi bi-lightbulb-fill text-warning me-2"></i>Search Tips</h5>
+                    <ul class="list-unstyled">
+                        <li class="mb-2">
+                            <i class="bi bi-arrow-right text-primary me-2"></i>
+                            <strong>Case Number:</strong> Enter only numbers (e.g., 123, 456)
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-arrow-right text-primary me-2"></i>
+                            <strong>Filing Year:</strong> Use 4-digit year (e.g., 2023, 2024)
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-arrow-right text-primary me-2"></i>
+                            <strong>CAPTCHA:</strong> Enter exactly as shown, case sensitive
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-arrow-right text-primary me-2"></i>
+                            <strong>Processing:</strong> Real scraping takes 10-30 seconds
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-arrow-right text-primary me-2"></i>
+                            <strong>Backup:</strong> Falls back to mock data if scraping fails
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchForm = document.getElementById('searchForm');
+    const searchBtn = document.getElementById('searchBtn');
+    const progressBar = document.getElementById('progressBar');
+    
+    // Form validation and submission handling
+    searchForm.addEventListener('submit', function(event) {
+        if (!searchForm.checkValidity()) {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            const firstInvalidField = searchForm.querySelector(':invalid');
+            if (firstInvalidField) {
+                firstInvalidField.focus();
+                firstInvalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        } else {
+            // Show loading state
+            if (progressBar) {
+                progressBar.style.display = 'block';
+                animateProgress();
+            }
+            
+            if (searchBtn) {
+                searchBtn.disabled = true;
+                searchBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Searching...';
+            }
+        }
+        
+        searchForm.classList.add('was-validated');
+    });
+    
+    // Auto-focus appropriate field
+    const captchaInput = document.getElementById('captcha_text');
+    const caseTypeSelect = document.querySelector('select[name="case_type"]');
+    
+    if (captchaInput) {
+        captchaInput.focus();
+    } else if (caseTypeSelect) {
+        caseTypeSelect.focus();
+    }
+    
+    // CAPTCHA input formatting
+    if (captchaInput) {
+        captchaInput.addEventListener('input', function() {
+            this.value = this.value.toUpperCase();
+        });
+    }
+});
+
+function animateProgress() {
+    const progressBar = document.querySelector('.progress-bar');
+    if (!progressBar) return;
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += Math.random() * 10 + 5;
+        if (progress >= 90) {
+            progress = 90;
+            clearInterval(interval);
+        }
+        progressBar.style.width = progress + '%';
+        progressBar.setAttribute('aria-valuenow', progress);
+    }, 1500);
+}
+</script>
+{% endblock %}
